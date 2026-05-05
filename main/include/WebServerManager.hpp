@@ -50,21 +50,11 @@ using WsFramePtr = std::unique_ptr<WsFrame, WsFrameDeleter>;
 
 class WebServerManager {
 public:
-  // ------------------------------------------------------------------------
-  // Public Interface
-  // ------------------------------------------------------------------------
   WebServerManager(ConfigManager &configManager,
                    ReaderDataManager &readerDataManager);
   ~WebServerManager();
 
   void begin();
-
-  /**
-   * @brief Stops the web server and cleans up all resources.
-   *
-   * Performs a complete shutdown of the web server by stopping the HTTP server,
-   * deleting the WebSocket task and queue, and stopping/deleting the status timer.
-   */
   void end();
   bool basicAuth(httpd_req_t* req);
   void setMqttManager(MqttManager *mqttManager) { m_mqttManager = mqttManager; }
@@ -72,10 +62,6 @@ public:
   void broadcastWs(const uint8_t *payload, size_t len, httpd_ws_type_t type);
 
 private:
-  // ------------------------------------------------------------------------
-  // Internal Types & Enums
-  // ------------------------------------------------------------------------
-
   struct WsClient {
     int fd;
     std::mutex mutex;
@@ -105,16 +91,10 @@ private:
     OTAState *state;
   };
 
-  // ------------------------------------------------------------------------
-  // Static Task Callbacks
-  // ------------------------------------------------------------------------
   static void ws_send_task(void *arg);
   static void otaTask(void *pvParameters);
   static void statusTimerCallback(void *arg);
 
-  // ------------------------------------------------------------------------
-  // HTTP Route Handlers (Static)
-  // ------------------------------------------------------------------------
   static esp_err_t handleGetConfig(httpd_req_t *req);
   static esp_err_t handleGetEthConfig(httpd_req_t *req);
   static esp_err_t handleGetNfcPresets(httpd_req_t *req);
@@ -131,36 +111,28 @@ private:
   static esp_err_t handleCertificateUpload(httpd_req_t *req);
   static esp_err_t handleCertificateStatus(httpd_req_t *req);
   static esp_err_t handleCertificateDelete(httpd_req_t *req);
-
   static esp_err_t handleCaptivePortal(httpd_req_t *req);
   static esp_err_t handleGetCaptivePortalConfig(httpd_req_t *req);
   static esp_err_t handleSaveCaptivePortalConfig(httpd_req_t *req);
   static esp_err_t handleWifiScan(httpd_req_t *req);
 
-  // ------------------------------------------------------------------------
-  // Core Internal Methods
-  // ------------------------------------------------------------------------
+  // Android HomeKey enrollment
+  static esp_err_t handleAndroidEnroll(httpd_req_t *req);
+  static esp_err_t handleAndroidUnenroll(httpd_req_t *req);
+  static esp_err_t handleAndroidEndpoints(httpd_req_t *req);
 
-  // Server setup
   void setupRoutes();
   void setupCaptivePortalRoutes();
-
-  // WebSocket management
   void addWebSocketClient(int fd);
   void removeWebSocketClient(int fd);
   void queue_ws_frame(int fd, const uint8_t *payload, size_t len,
                       httpd_ws_type_t type);
   esp_err_t handleWebSocketMessage(httpd_req_t *req,
                                    const std::string &message);
-
-  // Device info/status
   std::string getDeviceMetrics();
   std::string getDeviceInfo();
   std::string getOTAInfo();
-  // OTA management
   void broadcastOTAStatus(const OTAState& state);
-
-  // Utility methods
   static bool validateRequest(httpd_req_t *req, cJSON *currentData,
                               const char *body);
   static WebServerManager *getInstance(httpd_req_t *req);
@@ -169,29 +141,21 @@ private:
                                  httpd_ws_type_t type = HTTPD_WS_TYPE_TEXT);
   static esp_err_t sendAuthFailure(httpd_req_t *req);
 
-  // ------------------------------------------------------------------------
-  // Member Variables
-  // ------------------------------------------------------------------------
-
-  // HTTP Server
   httpd_handle_t m_server;
   static const char *TAG;
   std::string m_sessionId;
 
-  // Dependencies
   ConfigManager &m_configManager;
   ReaderDataManager &m_readerDataManager;
   MqttManager *m_mqttManager;
   NfcManager *m_nfcManager;
 
-  // WebSocket infrastructure
   QueueHandle_t m_wsQueue;
   TaskHandle_t m_wsTaskHandle;
   std::vector<std::unique_ptr<WsClient>> m_wsClients;
   std::mutex m_wsClientsMutex;
   esp_timer_handle_t m_statusTimer;
   std::deque<std::vector<uint8_t>> m_wsBroadcastBuffer;
-
 
   std::atomic<bool> m_otaInProgress{false};
   bool m_isInitialized{false};

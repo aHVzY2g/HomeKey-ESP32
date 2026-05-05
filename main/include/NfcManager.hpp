@@ -23,24 +23,30 @@ public:
                const std::array<uint8_t, 4> &nfcGpioPins,
                bool hkAuthPrecomputeEnabled,
                bool nfcFastPollingEnabled);
-    /**
- * @brief Unsubscribes the manager's HomeKey event subscription from the global EventBus.
- *
- * Ensures the subscriber identified by m_hk_event is removed when the NfcManager is destroyed.
- */
-~NfcManager() = default;
+    ~NfcManager() = default;
     bool begin();
     void updateEcpData();
 
+    /**
+     * @brief Invalidate the HomeKey auth precompute cache.
+     *
+     * Call this after externally modifying reader data (e.g., enrolling an
+     * Android endpoint via the web API) so the precomputed authentication
+     * context is rebuilt with the updated endpoint list on the next NFC tap.
+     */
+    void notifyReaderDataChanged();
+
+    bool isConnected() const { return m_connected.load(); }
+    uint8_t getFirmwareVersionMajor() const { return m_fwMajor; }
+    uint8_t getFirmwareVersionMinor() const { return m_fwMinor; }
+
 private:
-    // --- Task Management ---
     static void pollingTaskEntry(void* instance);
     void pollingTask();
     static void retryTaskEntry(void* instance);
     void retryTask();
     void startRetryTask();
 
-    // --- HomeKey Auth Cache (precompute) ---
     struct AuthCtxCacheItem {
         readerData_t readerData;
         std::function<bool(std::vector<uint8_t>&, std::vector<uint8_t>&, bool)> nfcFn;
@@ -49,8 +55,6 @@ private:
         uint32_t generation = 0;
     };
 
-    // Keep exactly one precomputed context ready for the next tap, and one extra slot to
-    // allow generating the next context while a tap is being processed.
     static constexpr size_t kAuthCtxCacheSize = 1;
     static constexpr size_t kAuthCtxPoolSize = 2;
     static void authPrecomputeTaskEntry(void* instance);
@@ -58,14 +62,12 @@ private:
     void initAuthPrecompute();
     void invalidateAuthCache();
 
-    // --- Core NFC Logic ---
     bool initializeReader();
     void handleTagPresence(const std::vector<uint8_t>& uid, const std::array<uint8_t,2>& atqa, const uint8_t& sak);
     void handleHomeKeyAuth();
     void handleGenericTag(const std::vector<uint8_t>& uid, const std::array<uint8_t,2>& atqa, const uint8_t& sak);
     void waitForTagRemoval();
-    
-    // --- Member Variables ---
+
     const std::array<uint8_t, 4> &nfcGpioPins;
     pn532::SpiTransport *m_pn532spi;
     pn532::Frontend *m_nfc;
@@ -89,27 +91,7 @@ private:
 
     static const char* TAG;
     AppEventLoop::SubscriptionHandle m_hk_event;
-    // Status tracking (replaces event-based status publishing)
     std::atomic<bool> m_connected{false};
     uint8_t m_fwMajor{0};
     uint8_t m_fwMinor{0};
-
-public:
-    /**
-     * @brief Check if NFC reader is connected.
-     * @return true if connected, false otherwise.
-     */
-    bool isConnected() const { return m_connected.load(); }
-
-    /**
-     * @brief Get firmware version major.
-     * @return Major version number.
-     */
-    uint8_t getFirmwareVersionMajor() const { return m_fwMajor; }
-
-    /**
-     * @brief Get firmware version minor.
-     * @return Minor version number.
-     */
-    uint8_t getFirmwareVersionMinor() const { return m_fwMinor; }
 };
